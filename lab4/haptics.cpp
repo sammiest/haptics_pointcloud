@@ -264,8 +264,8 @@ void loadSTL(const std::string& filename) {
             Eigen::Vector4d transformedPoint = transformation * point;
 
             // Debug: print original and transformed point
-            std::cout << "Original: (" << x << ", " << y << ", " << z << ") -> ";
-            std::cout << "Transformed: (" << transformedPoint.x() << ", " << transformedPoint.y() << ", " << transformedPoint.z() << ")\n";
+           // std::cout << "Original: (" << x << ", " << y << ", " << z << ") -> ";
+           // std::cout << "Transformed: (" << transformedPoint.x() << ", " << transformedPoint.y() << ", " << transformedPoint.z() << ")\n";
 
             pointCloud.emplace_back(transformedPoint.x(), transformedPoint.y(), transformedPoint.z());
         }
