@@ -1,0 +1,8 @@
+{
+  "name": "medrob-lab4",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "eigen3", "pybind11"
+  ],
+  "builtin-baseline": "cfdeb75bb67fee475b517a2f45d8f93f2b46bdb4"
+}
