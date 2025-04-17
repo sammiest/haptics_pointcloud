@@ -133,7 +133,7 @@ if __name__ == "__main__":
         if funnel_path.exists():
             funnel = MeshWidget(path=funnel_path, parent=root, scale=0.0005)
             funnel.tint = (1, 0, 0)
-            funnel.opacity = 0.9
+            funnel.opacity = 0.5
         else:
            print(f"File not found: {funnel_path}")
 

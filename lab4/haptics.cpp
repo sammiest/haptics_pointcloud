@@ -299,8 +299,9 @@ void loadSTL(const std::string& filename) {
 
 
 Vector3d extra(const Vector3d& position, const Vector3d& velocity) {
-    double k = 60.0;
-    double influence_radius = 0.022; // Tune this
+    double k = 60.0;                      // Spring constant
+    double damping = 0.8;                 // Damping factor
+    double influence_radius = 15;       // Influence zone
     Vector3d force = Vector3d::Zero();
 
     if (!flag) {
@@ -319,44 +320,48 @@ Vector3d extra(const Vector3d& position, const Vector3d& velocity) {
     KDTree index(3, adaptor, KDTreeSingleIndexAdaptorParams(10));
     index.buildIndex();
 
-    const size_t num_results = 3; //can change 
-   // double query_pt[3] = { position.x(), position.y(), position.z() };
-    Vector3d scaledPosition = position * 0.0005;  // same scale as STL
-    double query_pt[3] = { scaledPosition.x(), scaledPosition.y(), scaledPosition.z() };
-
+    const size_t num_results = 10;  // Use more neighbors for smoother normals
+    double query_pt[3] = { position.x(), position.y(), position.z() };
 
     std::vector<unsigned int> ret_indexes(num_results); 
     std::vector<double> out_dists_sqr(num_results);
 
     index.knnSearch(&query_pt[0], num_results, ret_indexes.data(), out_dists_sqr.data());
-    // Vector3d p1 = pointCloud[ret_indexes[0]];
-    // Vector3d p2 = pointCloud[ret_indexes[1]];
-    // Vector3d p3 = pointCloud[ret_indexes[2]];
-    // std::cout << "Closest points:\n" << p1.transpose() << "\n" << p2.transpose() << "\n" << p3.transpose() << "\n";
+
     double min_dist = std::sqrt(out_dists_sqr[0]);
-    std::cout << min_dist << std::endl;
+    std::cout << "Distance to surface: " << min_dist << std::endl;
+
     if (min_dist < influence_radius) {
-        std::cout << "influencing" << std::endl;
-        Vector3d p1 = pointCloud[ret_indexes[0]];
-        Vector3d p2 = pointCloud[ret_indexes[1]];
-        Vector3d p3 = pointCloud[ret_indexes[2]];
+        std::cout << "Influencing..." << std::endl;
 
-        //normalized normal force
-        Vector3d v1 = p2 - p1;
-        Vector3d v2 = p3 - p1;
-        Vector3d normal = v1.cross(v2).normalized();
+        // Compute a stable averaged surface normal
+        Vector3d normal_sum = Vector3d::Zero();
+        Vector3d anchor = pointCloud[ret_indexes[0]];
+        for (size_t i = 1; i + 1 < num_results; ++i) {
+            Vector3d b = pointCloud[ret_indexes[i]];
+            Vector3d c = pointCloud[ret_indexes[i + 1]];
+            Vector3d n = (b - anchor).cross(c - anchor);
+            if (n.norm() > 1e-6) {
+                normal_sum += n.normalized();
+            }
+        }
 
-        double penetration = influence_radius - min_dist;
-        force = k * penetration * normal;
+        Vector3d normal = normal_sum.normalized();
 
-        Vector3d to_position = (position - p1).normalized();
+        // Ensure the normal points outward
+        Vector3d to_position = (position - anchor).normalized();
         if (normal.dot(to_position) < 0) {
             normal = -normal;
         }
 
-        force = k * penetration * normal;
+        double penetration = influence_radius - min_dist;
 
-        // std::cout << "Closest points:\n" << p1.transpose() << "\n" << p2.transpose() << "\n" << p3.transpose() << "\n";
+        // Compute spring and damping force
+        Vector3d spring_force = k * penetration * normal;
+        Vector3d damping_force = -damping * velocity.dot(normal) * normal;
+
+        force = spring_force + damping_force;
+
         std::cout << "Normal: " << normal.transpose() << "\n";
         std::cout << "Force: " << force.transpose() << "\n";
     }
