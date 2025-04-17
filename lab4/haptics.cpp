@@ -278,12 +278,12 @@ void loadSTL(const std::string& filename) {
 
 Vector3d extra(const Vector3d& position, const Vector3d& velocity) {
     double k = 0.6;
-    double influence_radius = 800.0; // need to tune
+    double influence_radius = 800.0; // Tune this
     Vector3d force = Vector3d::Zero();
 
-    if (flag == false){
-        std::string stlFilePath = "C:\\Users\\FRBGuest\\Desktop\\Lab4\\medrob-lab4-main\\funnels\\UM3E_Funnel 5.obj";  
-        loadSTL(stlFilePath); 
+    if (!flag) {
+        std::string stlFilePath = "C:\\Users\\FRBGuest\\Desktop\\Lab4\\medrob-lab4-main\\funnels\\UM3E_Funnel 5.obj";
+        loadSTL(stlFilePath);
 
         if (pointCloud.empty()) {
             std::cerr << "STL point cloud is empty.\n";
@@ -291,26 +291,44 @@ Vector3d extra(const Vector3d& position, const Vector3d& velocity) {
         }
     }
 
-   
-    //nearest neighbor search of the closest point 
+    // Build KD-Tree
     PointCloudAdaptor adaptor(pointCloud);
     typedef KDTreeSingleIndexAdaptor<L2_Simple_Adaptor<double, PointCloudAdaptor>, PointCloudAdaptor, 3> KDTree;
-    KDTree index(3, adaptor, nanoflann::KDTreeSingleIndexAdaptorParams(10));
+    KDTree index(3, adaptor, KDTreeSingleIndexAdaptorParams(10));
     index.buildIndex();
 
-    unsigned int closest_idx = 0; 
-    double closest_dist_sq = std::numeric_limits<double>::max();
+    const size_t num_results = 3; //can change 
     double query_pt[3] = { position.x(), position.y(), position.z() };
 
-    index.knnSearch(&query_pt[0], 1, &closest_idx, &closest_dist_sq);
+    std::vector<unsigned int> ret_indexes(num_results); 
+    std::vector<double> out_dists_sqr(num_results);
 
-    double min_dist = std::sqrt(closest_dist_sq);
+    index.knnSearch(&query_pt[0], num_results, ret_indexes.data(), out_dists_sqr.data());
+
+    double min_dist = std::sqrt(out_dists_sqr[0]);
     if (min_dist < influence_radius) {
-        Vector3d closest_point = pointCloud[closest_idx];
-        std::cout << closest_point << std::endl;
-        Vector3d direction = (closest_point - position).normalized();
+        Vector3d p1 = pointCloud[ret_indexes[0]];
+        Vector3d p2 = pointCloud[ret_indexes[1]];
+        Vector3d p3 = pointCloud[ret_indexes[2]];
+
+        //normalized normal force
+        Vector3d v1 = p2 - p1;
+        Vector3d v2 = p3 - p1;
+        Vector3d normal = v1.cross(v2).normalized();
+
         double penetration = influence_radius - min_dist;
-        force = k * penetration * direction;
+        force = k * penetration * normal;
+
+        Vector3d to_position = (position - p1).normalized();
+        if (normal.dot(to_position) < 0) {
+            normal = -normal;
+        }
+
+        force = k * penetration * normal;
+
+        // std::cout << "Closest points:\n" << p1.transpose() << "\n" << p2.transpose() << "\n" << p3.transpose() << "\n";
+        // std::cout << "Normal: " << normal.transpose() << "\n";
+        // std::cout << "Force: " << force.transpose() << "\n";
     }
 
     return force;

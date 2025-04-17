@@ -49,10 +49,10 @@ if __name__ == "__main__":
     print(f"Current haptic mode: {mode_str}")
 
     #Initialize device and set mode
-    dev = Touch()
-    dev.init_device()
-    dev.set_mode(mode_idx+1)
-    print("Started")
+    # dev = Touch()
+    # dev.init_device()
+    # dev.set_mode(mode_idx+1)
+    # print("Started")
 
     # Start igmr
     window, root = create_simple_viewer(title="WN25 MedRob Lab4", orthographic=False)
