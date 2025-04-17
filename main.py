@@ -49,10 +49,10 @@ if __name__ == "__main__":
     print(f"Current haptic mode: {mode_str}")
 
     #Initialize device and set mode
-    # dev = Touch()
-    # dev.init_device()
-    # dev.set_mode(mode_idx+1)
-    # print("Started")
+    dev = Touch()
+    dev.init_device()
+    dev.set_mode(mode_idx+1)
+    print("Started")
 
     # Start igmr
     window, root = create_simple_viewer(title="WN25 MedRob Lab4", orthographic=False)
@@ -124,6 +124,7 @@ if __name__ == "__main__":
        # funnel_path = Path("C:/Users/FRBGuest/Desktop/Lab4/medrob-lab4-main/funnels/Funnel.obj")
        # funnel_path = Path("C:/Users/FRBGuest/Desktop/Lab4/medrob-lab4-main/funnels/UM3E_Funnel 5.obj")
         funnel_path = Path("C:/Users/FRBGuest/Desktop/Lab4/medrob-lab4-main/funnels/UM3E_Funnel 7.obj")
+        #funnel_path = cube_path
 
         print("Model Path:", funnel_path)
 

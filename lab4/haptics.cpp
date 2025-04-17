@@ -3,6 +3,19 @@
 #include <math.h>
 #include<vector>
 
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <Eigen/Dense>
+#include <iostream>
+#include <limits>
+#include <nanoflann.hpp>
+
+using namespace Eigen;
+using namespace nanoflann;
+
+
 using namespace Eigen;
 
 // These functions should all return a force in Newtons.
@@ -27,6 +40,7 @@ Vector3d sphere(const Vector3d& position, const Vector3d& velocity) {
     // ============ Start of Your Code ============
     if (position.norm() <= r){
         double distance = r - position.norm();
+        std::cout << distance << std::endl;
         force = k * distance * (position / position.norm());
     }
 
@@ -73,6 +87,7 @@ Vector3d viscosity(const Vector3d& position, const Vector3d& velocity) {
     if(std::abs(position[0])< half_cube_size && std::abs(position[1]) < half_cube_size && std::abs(position[2]) < half_cube_size)
     {
         force = -b * velocity;
+        std::cout << force << std::endl;
     }
 
     // ============= End of Your Code =============
@@ -185,19 +200,6 @@ Vector3d curve(const Vector3d& position, const Vector3d& velocity) {
     return force;
 }
 
-
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <Eigen/Dense>
-#include <iostream>
-#include <limits>
-#include <nanoflann.hpp>
-
-using namespace Eigen;
-using namespace nanoflann;
-
 std::vector<Vector3d> pointCloud;
 
 //for building the k-d tree
@@ -218,6 +220,23 @@ struct PointCloudAdaptor {
 };
 bool flag = false;
 
+#include <unordered_set>
+
+// Custom hash for Vector3d using quantization to avoid float precision issues
+struct Vector3dHash {
+    size_t operator()(const Eigen::Vector3d& v) const {
+        // Scale to integer grid to avoid floating point equality issues
+        auto hash_val = [](double x) { return std::hash<int64_t>()(static_cast<int64_t>(x * 1e6)); };
+        return hash_val(v.x()) ^ (hash_val(v.y()) << 1) ^ (hash_val(v.z()) << 2);
+    }
+};
+
+struct Vector3dEqual {
+    bool operator()(const Eigen::Vector3d& a, const Eigen::Vector3d& b) const {
+        return (a - b).norm() < 1e-6; // Near-equality
+    }
+};
+
 void loadSTL(const std::string& filename) {
     std::ifstream stlFile(filename);
     if (!stlFile) {
@@ -225,9 +244,8 @@ void loadSTL(const std::string& filename) {
         return;
     }
 
-
-    double scaleX = 0.001, scaleY = 0.001, scaleZ = 0.001;
-    double angleX = 0.0, angleY = 0.0, angleZ = 0.0; // In radians
+    double scaleX = 0.0005, scaleY = 0.0005, scaleZ = 0.0005;
+    double angleX = 0.0, angleY = 0.0, angleZ = 0.0;
     double translateX = 0.0, translateY = 0.0, translateZ = 0.0;
 
     Eigen::Quaterniond q = Eigen::AngleAxisd(angleX, Eigen::Vector3d::UnitX()) *
@@ -239,18 +257,20 @@ void loadSTL(const std::string& filename) {
     scaledRotation.col(0) = rotationMatrix.col(0) * scaleX;
     scaledRotation.col(1) = rotationMatrix.col(1) * scaleY;
     scaledRotation.col(2) = rotationMatrix.col(2) * scaleZ;
-    
+
     Eigen::Matrix4d transformation = Eigen::Matrix4d::Identity();
     transformation.block<3, 3>(0, 0) = scaledRotation;
     transformation(0, 3) = translateX;
     transformation(1, 3) = translateY;
     transformation(2, 3) = translateZ;
 
-    // Print transformation matrix once for debugging
     std::cout << "Transformation Matrix:\n" << transformation << "\n\n";
 
     std::string line;
-    pointCloud.reserve(100000);  // can change
+    pointCloud.reserve(100000);
+
+    std::unordered_set<Eigen::Vector3d, Vector3dHash, Vector3dEqual> uniquePoints;
+
     while (std::getline(stlFile, line)) {
         std::istringstream iss(line);
         std::string word;
@@ -262,27 +282,29 @@ void loadSTL(const std::string& filename) {
 
             Eigen::Vector4d point(x, y, z, 1.0);
             Eigen::Vector4d transformedPoint = transformation * point;
+            Eigen::Vector3d result(transformedPoint.x(), transformedPoint.y(), transformedPoint.z());
 
-            // Debug: print original and transformed point
-           // std::cout << "Original: (" << x << ", " << y << ", " << z << ") -> ";
-           // std::cout << "Transformed: (" << transformedPoint.x() << ", " << transformedPoint.y() << ", " << transformedPoint.z() << ")\n";
-
-            pointCloud.emplace_back(transformedPoint.x(), transformedPoint.y(), transformedPoint.z());
+            // Only add unique (or near-unique) points
+            if (uniquePoints.insert(result).second) {
+                pointCloud.emplace_back(result);
+            }
         }
     }
 
+    std::cout << "Loaded " << pointCloud.size() << " unique points.\n";
     flag = true;
 }
 
 
 
+
 Vector3d extra(const Vector3d& position, const Vector3d& velocity) {
-    double k = 0.6;
-    double influence_radius = 800.0; // Tune this
+    double k = 60.0;
+    double influence_radius = 0.022; // Tune this
     Vector3d force = Vector3d::Zero();
 
     if (!flag) {
-        std::string stlFilePath = "C:\\Users\\FRBGuest\\Desktop\\Lab4\\medrob-lab4-main\\funnels\\UM3E_Funnel 5.obj";
+        std::string stlFilePath = "C:\\Users\\FRBGuest\\Desktop\\Lab4\\medrob-lab4-main\\funnels\\UM3E_Funnel 7.obj";
         loadSTL(stlFilePath);
 
         if (pointCloud.empty()) {
@@ -298,15 +320,23 @@ Vector3d extra(const Vector3d& position, const Vector3d& velocity) {
     index.buildIndex();
 
     const size_t num_results = 3; //can change 
-    double query_pt[3] = { position.x(), position.y(), position.z() };
+   // double query_pt[3] = { position.x(), position.y(), position.z() };
+    Vector3d scaledPosition = position * 0.0005;  // same scale as STL
+    double query_pt[3] = { scaledPosition.x(), scaledPosition.y(), scaledPosition.z() };
+
 
     std::vector<unsigned int> ret_indexes(num_results); 
     std::vector<double> out_dists_sqr(num_results);
 
     index.knnSearch(&query_pt[0], num_results, ret_indexes.data(), out_dists_sqr.data());
-
+    // Vector3d p1 = pointCloud[ret_indexes[0]];
+    // Vector3d p2 = pointCloud[ret_indexes[1]];
+    // Vector3d p3 = pointCloud[ret_indexes[2]];
+    // std::cout << "Closest points:\n" << p1.transpose() << "\n" << p2.transpose() << "\n" << p3.transpose() << "\n";
     double min_dist = std::sqrt(out_dists_sqr[0]);
+    std::cout << min_dist << std::endl;
     if (min_dist < influence_radius) {
+        std::cout << "influencing" << std::endl;
         Vector3d p1 = pointCloud[ret_indexes[0]];
         Vector3d p2 = pointCloud[ret_indexes[1]];
         Vector3d p3 = pointCloud[ret_indexes[2]];
@@ -327,8 +357,8 @@ Vector3d extra(const Vector3d& position, const Vector3d& velocity) {
         force = k * penetration * normal;
 
         // std::cout << "Closest points:\n" << p1.transpose() << "\n" << p2.transpose() << "\n" << p3.transpose() << "\n";
-        // std::cout << "Normal: " << normal.transpose() << "\n";
-        // std::cout << "Force: " << force.transpose() << "\n";
+        std::cout << "Normal: " << normal.transpose() << "\n";
+        std::cout << "Force: " << force.transpose() << "\n";
     }
 
     return force;
